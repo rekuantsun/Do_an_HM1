@@ -38,9 +38,11 @@ def check_corrupted_image(img_file):
         return True
 
 #Ham doc file anh
-def read_img_datasets(path, label, size):
+def read_img_data(path, size):
     X = []
     y = []
+
+    label = path.split("\\")[-1]
     files = os.listdir(path)
     for img_file in files:
         if not(check_corrupted_image(os.path.join(path,img_file))):
@@ -49,12 +51,27 @@ def read_img_datasets(path, label, size):
             img_vector = img.flatten()
             X.append(img_vector)
             y.append(label)
-    X = np.array(X)
     return X,y
+
+def read_img_datasets(folder_path, size):
+    X = []
+    y = []
+
+    for img_folder in os.listdir(folder_path):
+        X_temp, y_temp = read_img_data(os.path.join(folder_path, img_folder), size)
+        X.extend(X_temp)
+        y.extend(y_temp)
+
+    return np.array(X), np.array(y)
 
 def encode_label(y):
     lb = LabelBinarizer()
     return lb.fit_transform(y).reshape(y.shape[0], )
+
+def count_unique_labels(y):
+    unique, counts = np.unique(y, return_counts=True)
+    result = dict(zip(unique, counts))
+    return result
 
 #Ham chuyen anh man hinh thanh vector 1024
 def convert_D_2_vector(path, label, size):
@@ -126,19 +143,44 @@ def test_table(modals: dict):
 
     return pd.DataFrame(result)
 
+#Ve duong cong thu hoi chinh xac
+def draw_precision_recall_curve(X_test, y_test, modals: dict):
+    no_modal = len(y_test[y_test == 1]) / len(y_test)
+    plt.plot([0, 1], [no_modal, no_modal], linestyle="--", label="no modal")
+    for modal in modals.keys():
+        probs = modal.predict_probs(X_test)[:, 1]
+        pre, rec = precision_recall_curve(y_test, probs)
+        plt.plot(rec, pre, label=modals[modal])
+    print("OK...")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.legend()
+    plt.savefig("PRC.png")
+    plt.show()
+    plt.close()
+
+
+def draw_ROC(X_test, y_test, modals: dict):
+    for modal in modals.keys():
+        probs = modal.predict_probs(X_test)[:, -1]
+        auc = roc_auc_score(y_test, probs)
+        fpr, tpr, _ = roc_curve(y_test, probs)
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.legend()
+    plt.savefig("ROC.png")
+    plt.show()
+    plt.close()
+
 def main():
     #Nhap tap du lieu
-    X,y = read_img_datasets('A:/Study/HocMay/Đồ án/PetImages/Cat','cat', (32,32))
-    X_dog, y_dog = read_img_datasets('A:/Study/HocMay/Đồ án/PetImages/Dog','dog', (32,32))
-    X = np.extend(X_dog)
-    y = np.extend(y_dog)
-    X = np.array(X)
-    y = LabelBinarizer().fit_transform(y)
-    print("x shape", X.shape)
+    X,y = read_img_datasets('A:/Study/HocMay/Đồ án/PetImages/',(32,32))
+    #Ma hoa nhan
+    y = encode_label(y)
+    #Phan chia train, test
     X_train, X_test, y_train, y_test = train_test_split(X, y, shuffle=True, random_state =1)
 
     # Huấn luyện mô hình:
-
     kNN_classifier = kNN_grid_search_cv(X_train, y_train)
     logistic_classifier = logistic_regression_cv(X_train, y_train)
 
@@ -149,6 +191,21 @@ def main():
     # Đánh giá mô hình:
     evaluate_model(y_test, y_pred_kNN)
     evaluate_model(y_test, y_pred_logistic)
+
+    print(test_table({
+        "kNN": [y_test, y_pred_kNN],
+        "Logistic Regression": [y_test, y_pred_logistic]
+    }))
+
+    draw_precision_recall_curve(X_test, y_test, {
+        kNN_classifier: "kNN",
+        logistic_classifier: "Logistic Regression"
+    })
+    draw_ROC(X_test, y_test, {
+        kNN_classifier: "kNN",
+        logistic_classifier: "Logistic Regression"
+    })
+
 
 if __name__ == '__main__':
     main()
